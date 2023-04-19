@@ -36,7 +36,7 @@ public static partial class Brushes
         var filteredBrushes = brushes.Where(x => x.Name != IgnoredBrushName).ToList();
 
         TreeItem<Brush> brushTree = BuildBrushTree(filteredBrushes);
-        TreeItem<Brush> alternateBrushTree = BuildBrushTree(GetAllAlternateBrushes(filteredBrushes));
+        TreeItem<Brush> alternateBrushTree = BuildBrushTree(GetAllAlternateBrushesFlattened(filteredBrushes));
 
         DirectoryInfo repoRoot = GetRepoRoot() ?? throw new InvalidOperationException("Failed to find the repo root");
 
@@ -373,15 +373,24 @@ public static partial class Brushes
                 """");
             foreach (Brush brush in brushes)
             {
-                writer.WriteLine($$"""
-                {{indent}}{{indent}}{{xamlIndent}}<TextBlock Text="{{brush.NameWithoutPrefix}}" Background="{StaticResource {{brush.Name}}}" />
-                """);
+                WriteBrush(brush, brush.NameWithoutPrefix);
+            }
+            foreach(Brush brush in GetAllObsoleteBrushes(brushes))
+            {
+                WriteBrush(brush, brush.Name!);
             }
             writer.WriteLine($$""""
                 {{indent}}{{indent}}</WrapPanel>
                 {{indent}}{{indent}}""";
                 {{indent}}}
                 """");
+
+            void WriteBrush(Brush brush, string name)
+            {
+                writer.WriteLine($$"""
+                {{indent}}{{indent}}{{xamlIndent}}<TextBlock Text="{{name}}" Background="{StaticResource {{brush.Name}}}" />
+                """);
+            }
         }
 
         void WriteAssertAllThemeBrushesSet()
@@ -392,20 +401,29 @@ public static partial class Brushes
                 """);
             foreach (Brush brush in brushes)
             {
+                WriteBrush(brush, brush.NameWithoutPrefix);
+            }
+            foreach(Brush brush in GetAllObsoleteBrushes(brushes))
+            {
+                WriteBrush(brush, brush.Name!);
+            }
+            writer.WriteLine($$"""
+                {{indent}}}
+                """);
+
+            void WriteBrush(Brush brush, string name)
+            {
                 writer.WriteLine($$"""
                     {{indent}}{{indent}}{
                     {{indent}}{{indent}}{{indent}}IResource resource = await App.GetResource("{{brush.Name}}");
                     {{indent}}{{indent}}{{indent}}SolidColorBrush? brush = resource.GetAs<SolidColorBrush>();
                     {{indent}}{{indent}}{{indent}}Assert.NotNull(brush);
-                    {{indent}}{{indent}}{{indent}}IVisualElement<TextBlock> textBlock = await panel.GetElement<TextBlock>("[Text=\"{{brush.NameWithoutPrefix}}\"]");
+                    {{indent}}{{indent}}{{indent}}IVisualElement<TextBlock> textBlock = await panel.GetElement<TextBlock>("[Text=\"{{name}}\"]");
                     {{indent}}{{indent}}{{indent}}Color? textBlockBackground = await textBlock.GetBackgroundColor();
                     {{indent}}{{indent}}{{indent}}Assert.Equal(brush?.Color, textBlockBackground);
                     {{indent}}{{indent}}}
                     """);
             }
-            writer.WriteLine($$"""
-                {{indent}}}
-                """);
         }
     }
 
@@ -443,7 +461,7 @@ public static partial class Brushes
         return root;
     }
 
-    private static IEnumerable<Brush> GetAllAlternateBrushes(IEnumerable<Brush> brushes)
+    private static IEnumerable<Brush> GetAllAlternateBrushesFlattened(IEnumerable<Brush> brushes)
     {
         return brushes.SelectMany(GetAllAlternateBrushes);
 
@@ -459,6 +477,24 @@ public static partial class Brushes
                 {
                     Name = key,
                     AlternateKeys = null,
+                };
+            }
+        }
+    }
+
+    private static IEnumerable<Brush> GetAllObsoleteBrushes(IEnumerable<Brush> brushes)
+    {
+        return brushes.SelectMany(GetAllObsoleteBrushes);
+
+        static IEnumerable<Brush> GetAllObsoleteBrushes(Brush x)
+        {
+            foreach (string key in x.ObsoleteKeys ?? Enumerable.Empty<string>())
+            {
+                yield return x with
+                {
+                    Name = key,
+                    AlternateKeys = null,
+                    ObsoleteKeys = null,
                 };
             }
         }
